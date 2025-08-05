@@ -22,8 +22,8 @@ from docx import Document
 import json
 
 # Constants
-SOURCE_DIR = '/Users/tdiprima/Documents/TJD'  # Directory with chaotic files
-VAULT_DIR = '/Users/tdiprima/Documents/vault'   # Organized vault directory
+SOURCE_DIR = './inbox'  # Directory with chaotic files
+VAULT_DIR = './vault'   # Organized vault directory
 N_CLUSTERS = 7          # Number of clusters (adjust as needed)
 MODEL_NAME = 'all-MiniLM-L6-v2'
 SUPPORTED_EXTENSIONS = ['.pdf', '.md', '.txt', '.docx', '.ipynb', '.py', '.jpg', '.jpeg', '.png']
