@@ -98,6 +98,29 @@ def move_file(file_path, destination_folder):
     shutil.move(file_path, os.path.join(destination_folder, os.path.basename(file_path)))
 
 
+def index_files(source_dir):
+    """Index files without moving them - just create embeddings for search."""
+    # Collect files
+    files = [os.path.join(source_dir, f) for f in os.listdir(source_dir)
+             if os.path.isfile(os.path.join(source_dir, f)) and os.path.splitext(f)[1].lower() in SUPPORTED_EXTENSIONS]
+    
+    data = []
+    for fp in files:
+        text = extract_text(fp)
+        if text.strip():
+            # Truncate text for embedding if too long (model limit ~256 tokens, but we truncate to 2000 chars for safety)
+            truncated_text = text[:2000]
+            embed = embed_text(truncated_text)
+            data.append({'path': fp, 'text': truncated_text, 'embed': embed})
+    
+    if not data:
+        print("No files with extractable text found.")
+        return []
+    
+    print(f"Indexed {len(data)} files for search.")
+    return data
+
+
 def organize_files():
     """Main function to process, cluster, name, and move files."""
     # Collect files
@@ -160,15 +183,31 @@ def chat_query(message, history):
 
 
 if __name__ == "__main__":
-    # Organize files and get data for search
-    data = organize_files()
+    print("Digital Vault Options:")
+    print("1. Index and query files (files stay in place)")
+    print("2. Reorganize files into vault and query")
+    
+    while True:
+        choice = input("Enter your choice (1 or 2): ").strip()
+        if choice in ['1', '2']:
+            break
+        print("Please enter 1 or 2.")
+    
+    if choice == '1':
+        # Index files without moving them
+        data = index_files(SOURCE_DIR)
+        mode_description = "Query your indexed files (e.g., 'Show me resumes' or 'Find invoices from 2024')."
+    else:
+        # Organize files and get data for search
+        data = organize_files()
+        mode_description = "Query your organized digital vault (e.g., 'Show me resumes' or 'Find invoices from 2024')."
     
     # Launch Gradio chatbot
     if data:
         interface = gr.ChatInterface(
             fn=chat_query,
             title="Ask My Archive",
-            description="Query your organized digital vault (e.g., 'Show me resumes' or 'Find invoices from 2024')."
+            description=mode_description
         )
         interface.launch()
     else:
