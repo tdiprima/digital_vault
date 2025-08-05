@@ -13,7 +13,7 @@ from sentence_transformers import SentenceTransformer
 from sentence_transformers.util import cos_sim
 from sklearn.cluster import KMeans
 from collections import defaultdict
-import openai
+from openai import OpenAI
 import gradio as gr
 from PIL import Image
 import pytesseract
@@ -22,8 +22,8 @@ from docx import Document
 import json
 
 # Constants
-SOURCE_DIR = './inbox'  # Directory with chaotic files
-VAULT_DIR = './vault'   # Organized vault directory
+SOURCE_DIR = '/Users/tdiprima/Documents/TJD'  # Directory with chaotic files
+VAULT_DIR = '/Users/tdiprima/Documents/vault'   # Organized vault directory
 N_CLUSTERS = 7          # Number of clusters (adjust as needed)
 MODEL_NAME = 'all-MiniLM-L6-v2'
 SUPPORTED_EXTENSIONS = ['.pdf', '.md', '.txt', '.docx', '.ipynb', '.py', '.jpg', '.jpeg', '.png']
@@ -32,10 +32,12 @@ TOP_K = 5               # Top results for semantic search
 # Load embedding model
 model = SentenceTransformer(MODEL_NAME)
 
-# Set OpenAI API key from environment
-openai.api_key = os.getenv('OPENAI_API_KEY')
-if not openai.api_key:
+# Initialize OpenAI client
+api_key = os.getenv('OPENAI_API_KEY')
+if not api_key:
     raise ValueError("Please set the OPENAI_API_KEY environment variable.")
+
+client = OpenAI(api_key=api_key)
 
 
 def embed_text(text):
@@ -80,7 +82,7 @@ def extract_text(file_path):
 def name_cluster(sample_texts):
     """Use GPT-4o-mini to name a cluster based on sample texts."""
     prompt = f"Provide a short, descriptive folder name for a group of files based on these sample contents (summarize the theme): {'; '.join([text[:200] for text in sample_texts])}"
-    response = openai.chat.completions.create(
+    response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": prompt}]
     )
