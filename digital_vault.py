@@ -98,7 +98,11 @@ def extract_text(file_path):
 
 def name_cluster(sample_texts):
     """Use GPT-4o-mini to name a cluster based on sample texts."""
-    prompt = f"Provide a short, descriptive folder name for a group of files based on these sample contents (summarize the theme): {'; '.join([text[:200] for text in sample_texts])}"
+    prompt = f"""
+    Provide a short, descriptive folder name for a group of files based on these sample contents (summarize the theme): 
+    {'; '.join([text[:200] for text in sample_texts])}.
+    But do NOT prefix the name with 'folder_name_'.
+    """
     response = client.chat.completions.create(
         model="gpt-4o-mini", messages=[{"role": "user", "content": prompt}]
     )
