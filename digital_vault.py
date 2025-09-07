@@ -11,6 +11,7 @@ import os
 import shutil
 import warnings
 from collections import defaultdict
+from pathlib import Path
 
 import gradio as gr
 import numpy as np
@@ -66,7 +67,7 @@ def extract_text(file_path):
     """Extract text from various file types, including OCR for images."""
     ext = os.path.splitext(file_path)[1].lower()
     try:
-        if ext in [".txt", ".md", ".py"]:
+        if ext in (".txt", ".md", ".py"):
             with open(file_path, "r", encoding="utf-8") as f:
                 return f.read()
         elif ext == ".pdf":
@@ -84,10 +85,10 @@ def extract_text(file_path):
                 nb = json.load(f)
             text = ""
             for cell in nb.get("cells", []):
-                if cell["cell_type"] in ["code", "markdown"]:
+                if cell["cell_type"] in ("code", "markdown"):
                     text += "".join(cell["source"]) + "\n"
             return text
-        elif ext in [".jpg", ".jpeg", ".png"]:
+        elif ext in (".jpg", ".jpeg", ".png"):
             return pytesseract.image_to_string(Image.open(file_path))
         else:
             return ""
@@ -116,7 +117,7 @@ def name_cluster(sample_texts):
 
 def move_file(file_path, destination_folder):
     """Move file to destination folder."""
-    os.makedirs(destination_folder, exist_ok=True)
+    Path(destination_folder).mkdir(parents=True)
     shutil.move(
         file_path, os.path.join(destination_folder, os.path.basename(file_path))
     )
@@ -221,7 +222,7 @@ if __name__ == "__main__":
 
     while True:
         choice = input("Enter your choice (1 or 2): ").strip()
-        if choice in ["1", "2"]:
+        if choice in ("1", "2"):
             break
         print("Please enter 1 or 2.")
 
