@@ -30,7 +30,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="threadpoolctl")
 
 # Constants
-SOURCE_DIR = "./inbox"  # Directory with chaotic files
+SOURCE_DIR = "/Users/tdiprima/Google Drive/My Drive/My Documents/Aeon Flex"  # Directory with chaotic files
 VAULT_DIR = "./vault"  # Organized vault directory
 N_CLUSTERS = 7  # Number of clusters (adjust as needed)
 MODEL_NAME = "all-MiniLM-L6-v2"
@@ -209,10 +209,33 @@ def semantic_search(query, data, top_k=TOP_K):
 
 
 def chat_query(message, history):
-    """Chat function for Gradio: process query and return results."""
+    """Chat function for Gradio: process query and return results using RAG."""
+    # Get relevant file paths
     results = semantic_search(message, data)
-    response = "Here are the top relevant files:\n" + "\n".join(results)
-    return response
+
+    # Get the actual content from those files
+    context_texts = []
+    for path in results:
+        for d in data:
+            if d["path"] == path:
+                context_texts.append(f"From {os.path.basename(path)}:\n{d['text']}")
+                break
+
+    context = "\n\n---\n\n".join(context_texts)
+
+    # Ask the LLM to answer based on the retrieved content
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {
+                "role": "system",
+                "content": "Answer the user's question based on the provided document excerpts. If the answer isn't in the documents, say so. Cite which file(s) the information came from.",
+            },
+            {"role": "user", "content": f"Documents:\n{context}\n\nQuestion: {message}"},
+        ],
+    )
+
+    return response.choices[0].message.content
 
 
 if __name__ == "__main__":
