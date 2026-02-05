@@ -98,14 +98,14 @@ def extract_text(file_path):
 
 
 def name_cluster(sample_texts):
-    """Use GPT-4o-mini to name a cluster based on sample texts."""
+    """Use gpt-5.2 to name a cluster based on sample texts."""
     prompt = f"""
     Provide a short, descriptive folder name for a group of files based on these sample contents (summarize the theme): 
     {'; '.join([text[:200] for text in sample_texts])}.
     But do NOT prefix the name with 'folder_name_'.
     """
     response = client.chat.completions.create(
-        model="gpt-4o-mini", messages=[{"role": "user", "content": prompt}]
+        model="gpt-5.2", messages=[{"role": "user", "content": prompt}]
     )
     folder_name = response.choices[0].message.content.strip()
     # Clean for filesystem (remove invalid chars)
@@ -225,7 +225,7 @@ def chat_query(message, history):
 
     # Ask the LLM to answer based on the retrieved content
     response = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model="gpt-5.2",
         messages=[
             {
                 "role": "system",
