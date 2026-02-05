@@ -231,7 +231,10 @@ def chat_query(message, history):
                 "role": "system",
                 "content": "Answer the user's question based on the provided document excerpts. If the answer isn't in the documents, say so. Cite which file(s) the information came from.",
             },
-            {"role": "user", "content": f"Documents:\n{context}\n\nQuestion: {message}"},
+            {
+                "role": "user",
+                "content": f"Documents:\n{context}\n\nQuestion: {message}",
+            },
         ],
     )
 
