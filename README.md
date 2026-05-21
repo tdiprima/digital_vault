@@ -22,13 +22,13 @@ PDF, DOCX, Markdown, plain text, Python scripts, Jupyter notebooks, and images (
 ## Example
 
 ```
-$ python digital_vault.py
+$ python digital_vault.py --source-dir ~/Documents/my-files
 Digital Vault Options:
 1. Index and query files (files stay in place)
 2. Reorganize files into vault and query
 
 Enter your choice (1 or 2): 1
-Indexed 42 files for search.
+2026-05-21 07:45:00 INFO pipeline — Loaded 42 files with extractable text
 Running on local URL: http://127.0.0.1:7860
 ```
 
@@ -60,21 +60,34 @@ Export your OpenAI API key:
 export OPENAI_API_KEY='your-key'
 ```
 
-Edit the constants at the top of `digital_vault.py` to point at your file directory:
-
-```python
-SOURCE_DIR = "/path/to/your/files"
-VAULT_DIR = "./vault"
-N_CLUSTERS = 7
-```
-
-### 🚀 Run
+### Run
 
 ```bash
-python digital_vault.py
+python digital_vault.py --source-dir /path/to/your/files
 ```
 
 Choose mode 1 to index and search without moving files, or mode 2 to cluster, rename, reorganize, and search.
+
+#### All options
+
+```
+--source-dir PATH     Directory of files to process (required, or set VAULT_SOURCE_DIR)
+--vault-dir PATH      Output directory for organize mode (default: ./vault)
+--n-clusters N        Number of semantic clusters (default: 7)
+--embedding-model M   SentenceTransformer model name (default: all-MiniLM-L6-v2)
+--llm-model M         OpenAI model for naming and chat (default: gpt-5.2)
+--top-k N             Number of search results per query (default: 5)
+```
+
+All options can also be set via environment variables:
+
+```bash
+export VAULT_SOURCE_DIR=/path/to/your/files
+export VAULT_DIR=./vault
+export VAULT_N_CLUSTERS=7
+export VAULT_TOP_K=5
+export LOG_LEVEL=INFO   # DEBUG for verbose output
+```
 
 ## 📜 License
 
