@@ -1,274 +1,116 @@
 """
-A Python script to organize files into a semantic digital vault using embeddings, clustering, AI naming, and a chatbot interface.
+Digital Vault — RAG-powered semantic search and organization for personal files.
 Inspired by: https://medium.com/codrift/the-python-archive-of-my-life-i-built-a-digital-vault-that-organizes-everything-ive-done-81c2094f66f2
-Requirements: Install sentence-transformers, scikit-learn, openai, gradio, pytesseract, Pillow, PyPDF2, python-docx
-Also, install Tesseract OCR system-wide.
-Set your OpenAI API key as an environment variable: export OPENAI_API_KEY='your-key'
+
+Usage:
+  python digital_vault.py --source-dir /path/to/files
+  python digital_vault.py --source-dir /path/to/files --n-clusters 5 --vault-dir ./vault
+
+Environment variables:
+  OPENAI_API_KEY     — required
+  VAULT_SOURCE_DIR   — fallback for --source-dir
+  VAULT_DIR          — fallback for --vault-dir (default: ./vault)
+  VAULT_N_CLUSTERS   — fallback for --n-clusters (default: 7)
+  VAULT_TOP_K        — fallback for --top-k (default: 5)
+  VAULT_LLM_MODEL    — fallback for --llm-model (default: gpt-5.2)
+  LOG_LEVEL          — logging verbosity (default: INFO)
+
+Modes (selected interactively at startup):
+  1. Index and query: embed files for search without moving them
+  2. Organize and query: cluster files, name folders via LLM, move, then search
 """
 
-import json
+import logging
 import os
-import shutil
+import sys
 import warnings
-from collections import defaultdict
-from pathlib import Path
 
 import gradio as gr
-import numpy as np
-import PyPDF2
-import pytesseract
-import torch
-from docx import Document
 from openai import OpenAI
-from PIL import Image
-from sentence_transformers import SentenceTransformer
-from sentence_transformers.util import cos_sim
-from sklearn.cluster import KMeans
 
-# Suppress common warnings for cleaner output
+from chat import create_chat_fn
+from clustering import build_cluster_samples, cluster_records, name_clusters
+from config import load_config
+from embedding import create_embedder
+from pipeline import load_and_embed_files
+from vault import organize_vault
+
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="threadpoolctl")
 
-# Constants
-SOURCE_DIR = "/Users/tdiprima/Google Drive/My Drive/My Documents/Aeon Flex"  # Directory with chaotic files
-VAULT_DIR = "./vault"  # Organized vault directory
-N_CLUSTERS = 7  # Number of clusters (adjust as needed)
-MODEL_NAME = "all-MiniLM-L6-v2"
-SUPPORTED_EXTENSIONS = [
-    ".pdf",
-    ".md",
-    ".txt",
-    ".docx",
-    ".ipynb",
-    ".py",
-    ".jpg",
-    ".jpeg",
-    ".png",
-]
-TOP_K = 5  # Top results for semantic search
 
-# Load embedding model
-model = SentenceTransformer(MODEL_NAME)
-
-# Initialize OpenAI client
-api_key = os.getenv("OPENAI_API_KEY")
-if not api_key:
-    raise ValueError("Please set the OPENAI_API_KEY environment variable.")
-
-client = OpenAI(api_key=api_key)
-
-
-def embed_text(text):
-    """Embed text using SentenceTransformer."""
-    return model.encode(text)
-
-
-def extract_text(file_path):
-    """Extract text from various file types, including OCR for images."""
-    ext = os.path.splitext(file_path)[1].lower()
-    try:
-        if ext in (".txt", ".md", ".py"):
-            with open(file_path, "r", encoding="utf-8") as f:
-                return f.read()
-        elif ext == ".pdf":
-            with open(file_path, "rb") as f:
-                reader = PyPDF2.PdfReader(f)
-                text = ""
-                for page in reader.pages:
-                    text += page.extract_text() or ""
-                return text
-        elif ext == ".docx":
-            doc = Document(file_path)
-            return " ".join([p.text for p in doc.paragraphs])
-        elif ext == ".ipynb":
-            with open(file_path, "r", encoding="utf-8") as f:
-                nb = json.load(f)
-            text = ""
-            for cell in nb.get("cells", []):
-                if cell["cell_type"] in ("code", "markdown"):
-                    text += "".join(cell["source"]) + "\n"
-            return text
-        elif ext in (".jpg", ".jpeg", ".png"):
-            return pytesseract.image_to_string(Image.open(file_path))
-        else:
-            return ""
-    except Exception as e:
-        print(f"Error extracting text from {file_path}: {e}")
-        return ""
-
-
-def name_cluster(sample_texts):
-    """Use gpt-5.2 to name a cluster based on sample texts."""
-    prompt = f"""
-    Provide a short, descriptive folder name for a group of files based on these sample contents (summarize the theme): 
-    {'; '.join([text[:200] for text in sample_texts])}.
-    But do NOT prefix the name with 'folder_name_'.
-    """
-    response = client.chat.completions.create(
-        model="gpt-5.2", messages=[{"role": "user", "content": prompt}]
-    )
-    folder_name = response.choices[0].message.content.strip()
-    # Clean for filesystem (remove invalid chars)
-    folder_name = "".join(
-        c for c in folder_name if c.isalnum() or c in [" ", "_", "-"]
-    ).replace(" ", "_")
-    return folder_name
-
-
-def move_file(file_path, destination_folder):
-    """Move file to destination folder."""
-    Path(destination_folder).mkdir(parents=True)
-    shutil.move(
-        file_path, os.path.join(destination_folder, os.path.basename(file_path))
+def setup_logging() -> None:
+    level = os.getenv("LOG_LEVEL", "INFO").upper()
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s %(levelname)s %(name)s — %(message)s",
     )
 
 
-def index_files(source_dir):
-    """Index files without moving them - just create embeddings for search."""
-    # Collect files
-    files = [
-        os.path.join(source_dir, f)
-        for f in os.listdir(source_dir)
-        if os.path.isfile(os.path.join(source_dir, f))
-        and os.path.splitext(f)[1].lower() in SUPPORTED_EXTENSIONS
-    ]
-
-    data = []
-    for fp in files:
-        text = extract_text(fp)
-        if text.strip():
-            # Truncate text for embedding if too long (model limit ~256 tokens, but we truncate to 2000 chars for safety)
-            truncated_text = text[:2000]
-            embed = embed_text(truncated_text)
-            data.append({"path": fp, "text": truncated_text, "embed": embed})
-
-    if not data:
-        print("No files with extractable text found.")
-        return []
-
-    print(f"Indexed {len(data)} files for search.")
-    return data
-
-
-def organize_files():
-    """Main function to process, cluster, name, and move files."""
-    # Collect files
-    files = [
-        os.path.join(SOURCE_DIR, f)
-        for f in os.listdir(SOURCE_DIR)
-        if os.path.isfile(os.path.join(SOURCE_DIR, f))
-        and os.path.splitext(f)[1].lower() in SUPPORTED_EXTENSIONS
-    ]
-
-    data = []
-    for fp in files:
-        text = extract_text(fp)
-        if text.strip():
-            # Truncate text for embedding if too long (model limit ~256 tokens, but we truncate to 2000 chars for safety)
-            truncated_text = text[:2000]
-            embed = embed_text(truncated_text)
-            data.append({"path": fp, "text": truncated_text, "embed": embed})
-
-    if not data:
-        print("No files with extractable text found.")
-        return []
-
-    # Cluster
-    all_embeddings = np.array([d["embed"] for d in data])
-    kmeans = KMeans(n_clusters=N_CLUSTERS, random_state=42).fit(all_embeddings)
-
-    for i, d in enumerate(data):
-        d["cluster"] = kmeans.labels_[i]
-
-    # Group by cluster
-    clusters = defaultdict(list)
-    for d in data:
-        clusters[d["cluster"]].append(d)
-
-    # Name and move
-    for cluster_id, items in clusters.items():
-        sample_texts = [item["text"] for item in items[:3]]
-        folder_name = name_cluster(sample_texts)
-        dest_folder = os.path.join(VAULT_DIR, folder_name)
-        for item in items:
-            move_file(item["path"], dest_folder)
-            # Update path in data
-            item["path"] = os.path.join(dest_folder, os.path.basename(item["path"]))
-
-    print("Files organized into vault.")
-    return data
-
-
-def semantic_search(query, data, top_k=TOP_K):
-    """Semantic search: find top_k similar files based on query embedding."""
-    query_embed = embed_text(query)
-    embeds = torch.tensor(np.array([d["embed"] for d in data]))
-    sims = cos_sim(query_embed, embeds)[0]
-    top_indices = torch.topk(sims, min(top_k, len(sims))).indices
-    return [data[i]["path"] for i in top_indices]
-
-
-def chat_query(message, history):
-    """Chat function for Gradio: process query and return results using RAG."""
-    # Get relevant file paths
-    results = semantic_search(message, data)
-
-    # Get the actual content from those files
-    context_texts = []
-    for path in results:
-        for d in data:
-            if d["path"] == path:
-                context_texts.append(f"From {os.path.basename(path)}:\n{d['text']}")
-                break
-
-    context = "\n\n---\n\n".join(context_texts)
-
-    # Ask the LLM to answer based on the retrieved content
-    response = client.chat.completions.create(
-        model="gpt-5.2",
-        messages=[
-            {
-                "role": "system",
-                "content": "Answer the user's question based on the provided document excerpts. If the answer isn't in the documents, say so. Cite which file(s) the information came from.",
-            },
-            {
-                "role": "user",
-                "content": f"Documents:\n{context}\n\nQuestion: {message}",
-            },
-        ],
-    )
-
-    return response.choices[0].message.content
-
-
-if __name__ == "__main__":
+def prompt_mode() -> int:
     print("Digital Vault Options:")
     print("1. Index and query files (files stay in place)")
     print("2. Reorganize files into vault and query")
-
     while True:
         choice = input("Enter your choice (1 or 2): ").strip()
         if choice in ("1", "2"):
-            break
+            return int(choice)
         print("Please enter 1 or 2.")
 
-    if choice == "1":
-        # Index files without moving them
-        data = index_files(SOURCE_DIR)
-        mode_description = "Query your indexed files (e.g., 'Show me resumes' or 'Find invoices from 2024')."
-    else:
-        # Organize files and get data for search
-        data = organize_files()
-        mode_description = "Query your organized digital vault (e.g., 'Show me resumes' or 'Find invoices from 2024')."
 
-    # Launch Gradio chatbot
-    if data:
-        interface = gr.ChatInterface(
-            fn=chat_query,
-            title="Ask My Archive",
-            description=mode_description,
-            type="messages",
+def main() -> None:
+    setup_logging()
+    logger = logging.getLogger(__name__)
+
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        logger.error("OPENAI_API_KEY environment variable is not set")
+        sys.exit(1)
+
+    try:
+        config = load_config()
+    except ValueError as e:
+        logger.error("Configuration error: %s", e)
+        sys.exit(1)
+
+    embedder = create_embedder(config.embedding_model)
+    client = OpenAI(api_key=api_key)
+    mode = prompt_mode()
+
+    logger.info("Loading and embedding files from %s", config.source_dir)
+    records = load_and_embed_files(config.source_dir, config.supported_extensions, embedder)
+
+    if not records:
+        logger.error("No files with extractable text found in %s. Exiting.", config.source_dir)
+        sys.exit(1)
+
+    if mode == 2:
+        logger.info("Clustering %d files into %d groups", len(records), config.n_clusters)
+        records = cluster_records(records, config.n_clusters)
+        samples = build_cluster_samples(records)
+        logger.info("Naming %d clusters via LLM (single batch call)", len(samples))
+        cluster_names = name_clusters(samples, client, config.llm_model)
+        records = organize_vault(records, config.vault_dir, cluster_names)
+        mode_description = (
+            "Query your organized digital vault "
+            "(e.g., 'Show me resumes' or 'Find invoices from 2024')."
         )
-        interface.launch()
     else:
-        print("No data to query. Exiting.")
+        mode_description = (
+            "Query your indexed files "
+            "(e.g., 'Show me resumes' or 'Find invoices from 2024')."
+        )
+
+    chat_fn = create_chat_fn(records, embedder, client, config.llm_model, config.top_k)
+
+    interface = gr.ChatInterface(
+        fn=chat_fn,
+        title="Ask My Archive",
+        description=mode_description,
+        type="messages",
+    )
+    interface.launch()
+
+
+if __name__ == "__main__":
+    main()
