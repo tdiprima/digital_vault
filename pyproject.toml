@@ -14,5 +14,5 @@ dependencies = [
     "PyPDF2>=3.0.1",
     "python-docx>=0.8.11",
     "numpy>=1.21.0,<2.0.0",
-    "torch>=1.11.0",
+    "torch>=1.11.0,<2.3.0",
 ]
