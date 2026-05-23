@@ -100,7 +100,6 @@ def main() -> None:
 
     print(f"\n{mode_description}")
     print("Type 'quit' or 'exit' to stop.\n")
-    history = []
     while True:
         try:
             question = input("You: ").strip()
@@ -112,10 +111,8 @@ def main() -> None:
         if question.lower() in ("quit", "exit"):
             print("Bye.")
             break
-        answer = chat_fn(question, history)
+        answer = chat_fn(question, [])
         print(f"\nVault: {answer}\n")
-        history.append({"role": "user", "content": question})
-        history.append({"role": "assistant", "content": answer})
 
 
 if __name__ == "__main__":
