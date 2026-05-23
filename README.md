@@ -8,12 +8,12 @@ Years of PDFs, Word docs, Jupyter notebooks, code files, screenshots, and notes 
 
 ## Semantic Search Meets Automatic Organization
 
-Digital Vault reads the content of your files -- including OCR on images -- generates semantic embeddings, and lets you ask questions in plain English through a chat interface. It supports two modes:
+Digital Vault reads the content of your files -- including OCR on images -- generates semantic embeddings, and lets you ask questions in plain English through a command-line chat loop. It supports two modes:
 
 - **Index mode** leaves your files in place and builds a searchable semantic index over them.
-- **Organize mode** clusters files by topic using KMeans, asks GPT to name each cluster, and physically sorts everything into labeled folders.
+- **Organize mode** clusters files by topic using KMeans, asks the LLM to name each cluster, and physically sorts everything into labeled folders.
 
-Both modes launch a Gradio chatbot that uses retrieval-augmented generation (RAG) to answer questions grounded in your actual documents, citing which files the answer came from.
+Both modes drop you into an interactive CLI prompt that uses retrieval-augmented generation (RAG) to answer questions grounded in your actual documents, citing which files the answer came from. Uses Ollama with gemma3 locally -- no API key required.
 
 ### Supported file types
 
@@ -29,14 +29,18 @@ Digital Vault Options:
 
 Enter your choice (1 or 2): 1
 2026-05-21 07:45:00 INFO pipeline — Loaded 42 files with extractable text
-Running on local URL: http://127.0.0.1:7860
-```
 
-Then in the browser:
+Query your indexed files (e.g., 'Show me resumes' or 'Find invoices from 2024').
+Type 'quit' or 'exit' to stop.
 
-> **You:** Find anything related to machine learning training pipelines
->
-> **Vault:** Based on the documents, I found references to training pipelines in two files. From `ml_notes.md`: ... From `experiment_v3.ipynb`: ... These files discuss data preprocessing steps and hyperparameter tuning for a convolutional model.
+You: Find anything related to machine learning training pipelines
+
+Vault: Based on the documents, I found references to training pipelines in two files.
+From `ml_notes.md`: ... From `experiment_v3.ipynb`: ... These files discuss data
+preprocessing steps and hyperparameter tuning for a convolutional model.
+
+You: quit
+Bye.
 
 ## Usage
 
@@ -44,7 +48,7 @@ Then in the browser:
 
 - Python 3.11+
 - [Tesseract OCR](https://github.com/tesseract-ocr/tesseract) installed system-wide
-- An OpenAI API key
+- [Ollama](https://ollama.com) installed and running with gemma3 pulled (`ollama pull gemma3`)
 
 ### Install
 
@@ -54,10 +58,10 @@ pip install -e .
 
 ### Configure
 
-Export your OpenAI API key:
+Make sure Ollama is running:
 
 ```bash
-export OPENAI_API_KEY='your-key'
+ollama serve
 ```
 
 ### Run
@@ -75,7 +79,7 @@ Choose mode 1 to index and search without moving files, or mode 2 to cluster, re
 --vault-dir PATH      Output directory for organize mode (default: ./vault)
 --n-clusters N        Number of semantic clusters (default: 7)
 --embedding-model M   SentenceTransformer model name (default: all-MiniLM-L6-v2)
---llm-model M         OpenAI model for naming and chat (default: gpt-5.2)
+--llm-model M         Ollama model for naming and chat (default: gemma3)
 --top-k N             Number of search results per query (default: 5)
 ```
 
@@ -86,6 +90,7 @@ export VAULT_SOURCE_DIR=/path/to/your/files
 export VAULT_DIR=./vault
 export VAULT_N_CLUSTERS=7
 export VAULT_TOP_K=5
+export VAULT_OLLAMA_URL=http://localhost:11434/v1  # default
 export LOG_LEVEL=INFO   # DEBUG for verbose output
 ```
 
