@@ -1,4 +1,4 @@
-"""RAG chat function factory. Returns a Gradio-compatible callback with explicit dependencies."""
+"""RAG chat function factory. Returns a callback closed over indexed records and LLM client."""
 
 import logging
 from pathlib import Path
@@ -26,7 +26,7 @@ def create_chat_fn(
     llm_model: str,
     top_k: int,
 ) -> Callable[[str, list], str]:
-    """Return a Gradio chat callback closed over the indexed records and clients."""
+    """Return a chat callback closed over indexed records and clients."""
 
     def chat_query(message: str, history: list) -> str:
         results = semantic_search(message, records, embedder, top_k)

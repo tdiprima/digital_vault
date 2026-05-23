@@ -7,12 +7,12 @@ Usage:
   python digital_vault.py --source-dir /path/to/files --n-clusters 5 --vault-dir ./vault
 
 Environment variables:
-  OPENAI_API_KEY     — required
   VAULT_SOURCE_DIR   — fallback for --source-dir
   VAULT_DIR          — fallback for --vault-dir (default: ./vault)
   VAULT_N_CLUSTERS   — fallback for --n-clusters (default: 7)
   VAULT_TOP_K        — fallback for --top-k (default: 5)
-  VAULT_LLM_MODEL    — fallback for --llm-model (default: gpt-5.2)
+  VAULT_LLM_MODEL    — fallback for --llm-model (default: gemma3)
+  VAULT_OLLAMA_URL   — Ollama base URL (default: http://localhost:11434/v1)
   LOG_LEVEL          — logging verbosity (default: INFO)
 
 Modes (selected interactively at startup):
@@ -25,7 +25,6 @@ import os
 import sys
 import warnings
 
-import gradio as gr
 from openai import OpenAI
 
 from chat import create_chat_fn
@@ -62,11 +61,6 @@ def main() -> None:
     setup_logging()
     logger = logging.getLogger(__name__)
 
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        logger.error("OPENAI_API_KEY environment variable is not set")
-        sys.exit(1)
-
     try:
         config = load_config()
     except ValueError as e:
@@ -74,7 +68,8 @@ def main() -> None:
         sys.exit(1)
 
     embedder = create_embedder(config.embedding_model)
-    client = OpenAI(api_key=api_key)
+    ollama_url = os.getenv("VAULT_OLLAMA_URL", "http://localhost:11434/v1")
+    client = OpenAI(base_url=ollama_url, api_key="ollama")
     mode = prompt_mode()
 
     logger.info("Loading and embedding files from %s", config.source_dir)
@@ -103,13 +98,24 @@ def main() -> None:
 
     chat_fn = create_chat_fn(records, embedder, client, config.llm_model, config.top_k)
 
-    interface = gr.ChatInterface(
-        fn=chat_fn,
-        title="Ask My Archive",
-        description=mode_description,
-        type="messages",
-    )
-    interface.launch()
+    print(f"\n{mode_description}")
+    print("Type 'quit' or 'exit' to stop.\n")
+    history = []
+    while True:
+        try:
+            question = input("You: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nBye.")
+            break
+        if not question:
+            continue
+        if question.lower() in ("quit", "exit"):
+            print("Bye.")
+            break
+        answer = chat_fn(question, history)
+        print(f"\nVault: {answer}\n")
+        history.append({"role": "user", "content": question})
+        history.append({"role": "assistant", "content": answer})
 
 
 if __name__ == "__main__":

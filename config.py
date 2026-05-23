@@ -48,7 +48,7 @@ def load_config() -> VaultConfig:
     )
     parser.add_argument(
         "--llm-model",
-        default=os.getenv("VAULT_LLM_MODEL", "gpt-5.2"),
+        default=os.getenv("VAULT_LLM_MODEL", "gemma3"),
     )
     parser.add_argument(
         "--top-k",
